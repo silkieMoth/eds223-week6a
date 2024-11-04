@@ -1,0 +1,165 @@
+---
+title: "remote_sensing_dimensions"
+format: html
+editor: visual
+---
+
+```{r}
+rm(list = ls())
+```
+
+```{r}
+library(sf)
+library(terra)
+library(tidyverse)
+library(tmap)
+library(spDataLarge)
+```
+
+rasterization is the process of representing vector objects as raster objects
+
+```{r}
+boundary <- read_sf(system.file("vector/zion.gpkg", package = "spDataLarge"))
+
+elevation <- terra::rast(system.file('raster/srtm.tif', package = 'spDataLarge'))
+
+# check crs match
+
+if(crs(elevation) == crs(boundary)){
+  print("CRS matches")
+} else{
+  boundary <- sf::st_transform(boundary, st_crs(elevation))
+}
+
+```
+
+```{r}
+# checks if boundary is vector polygon type
+
+if(sf::st_geometry_type(boundary) == 'POLYGON') {
+  print('polygon data')
+} else{
+  print('not polygon data')
+}
+```
+
+```{r}
+park_polygon <- boundary
+
+# create line version of the park boundary
+park_border <- boundary %>%
+  sf::st_cast(., 'MULTILINESTRING')
+
+# this should run
+tm_shape(park_polygon) +
+  tm_polygons()
+
+# this shouldn't, because you can't project line type as a polygon
+#tm_shape(park_border) +
+#  tm_polygons()
+```
+
+
+```{r}
+# rasterizing based on vector and template raster (using raster for extent and cell size)
+polygon_raster <- terra::rasterize(park_polygon, elevation)
+border_raster <- terra::rasterize(park_border, elevation)
+
+tm_shape(polygon_raster) +
+  tm_raster()
+
+# this will work but because its a rasterized line type it just looks like a bunch of lines
+tm_shape(border_raster) +
+  tm_raster()
+
+# create blank template rasters to use in rasterize()
+# low res
+template_raster_low <- terra::rast(ext(park_polygon),
+                                   resolution = 0.05,
+                                   crs = st_crs(park_polygon))
+# high res
+template_raster_high <- terra::rast(ext(park_polygon),
+                                   resolution = 0.01,
+                                   crs = st_crs(park_polygon))
+
+# using them to rasterize
+polygon_raster_low <- terra::rasterize(park_polygon,
+                                       template_raster_low)
+polygon_raster_high <- terra::rasterize(park_polygon,
+                                       template_raster_high)
+```
+
+```{r}
+# this will look like the fnaf purple man
+tm_shape(polygon_raster_low) +
+  tm_raster()
+
+# this will looking meat boy on mutating after the 2034 climate war nuclear strikes
+tm_shape(polygon_raster_high) +
+  tm_raster()
+```
+
+```{r}
+
+cycle_hire_osm <- spData::cycle_hire_osm
+
+# change crs
+cycle_hire_osm_projected <- st_transform(cycle_hire_osm, 'EPSG:27700')
+
+# make template raster based on extent and crs of the cycle_hire_osm_projected raster
+template_raster <- terra::rast(ext(cycle_hire_osm_projected), 
+                               resolution = 1000,
+                               crs = crs(cycle_hire_osm_projected))
+
+tm_shape(cycle_hire_osm_projected) + 
+  tm_symbols()
+
+```
+
+```{r}
+# presence/absence of cycle hire points
+ch_raster1 <- terra::rasterize(cycle_hire_osm_projected,
+                               template_raster)
+
+tm_shape(ch_raster1) +
+  tm_raster()
+
+# length function totals the number of points from the vector in that cell
+ch_raster2 <- terra::rasterize(cycle_hire_osm_projected,
+                               template_raster,
+                               fun = 'length')
+
+tm_shape(ch_raster2) +
+  tm_raster(title = 'Number of cycle hire points')
+
+# totals sum of capacity column for each cell
+ch_raster3 <- terra::rasterize(cycle_hire_osm_projected,
+                               template_raster,
+                               field = 'capacity', # specifies capacity column in vector
+                               fun = sum, 
+                               na.rm = TRUE)
+
+tm_shape(ch_raster3) +
+  tm_raster(title = 'total capacity')
+```
+
+```{r}
+# loading in 7 banded remote sensing image
+L7 <- terra::rast(system.file('tif/L7_ETMs.tif', package = 'stars'))
+
+
+tm_shape(L7) + 
+  tm_rgb(r = 3, g = 2, b = 1) # red is band 3, green band 2, blue band 1
+
+# false colors
+tm_shape(L7) + 
+  tm_rgb(r = 4, g = 3, b = 2)
+
+tm_shape(L7) + 
+  tm_rgb(r = 5, g = 4, b = 2)
+
+# but if we use tm_raster()?
+tm_shape(L7) + 
+  tm_raster()
+```
+
